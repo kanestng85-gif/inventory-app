@@ -1,0 +1,7 @@
+streamlit
+pandas
+google_cloud_vision
+gspread
+oauth2client
+thefuzz[speedup]
+Pillow
