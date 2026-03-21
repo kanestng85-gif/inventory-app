@@ -9,7 +9,7 @@ from PIL import Image
 
 # --- CONFIGURATION ---
 # 1. CHANGE THIS to your exact Google Sheet name
-GOOGLE_SHEET_NAME = "Cost" 
+GOOGLE_SHEET_NAME = "Product_list" 
 
 # --- GOOGLE AUTHENTICATION (Using Secrets) ---
 def get_google_clients():
@@ -51,15 +51,25 @@ gs, vision_client = get_google_clients()
 
 try:
     sheet = gs.open(GOOGLE_SHEET_NAME)
-    inv_tab = sheet.worksheet("Inventory")
+    
+    # 1. CHANGE "Inventory" to "Cost"
+    inv_tab = sheet.worksheet("Cost") 
+    
     log_tab = sheet.worksheet("Invoice_Log")
     
-    # Load inventory names for matching
+    # Load data
     inv_data = inv_tab.get_all_records()
     df_inv = pd.DataFrame(inv_data)
-    inventory_list = df_inv['Item Name'].tolist()
+    
+    # 2. CHECK YOUR COLUMN NAME
+    # If your first column is named "Name" (based on your previous screenshot), 
+    # change 'Item Name' to 'Name' below:
+    inventory_list = df_inv['Name'].tolist() 
+
 except Exception as e:
-    st.error(f"無法讀取試算表: 請確認試算表名稱正確，且已分享權限給 Service Account。")
+    st.error(f"無法讀取試算表: 請確認分頁名稱為 'Cost'，且欄位名稱正確。")
+    # This will print the exact technical error to help us debug
+    st.write(f"偵錯資訊: {e}") 
     st.stop()
 
 # --- FILE UPLOADER ---
