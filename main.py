@@ -49,27 +49,42 @@ st.info("請上傳發票照片，系統將自動比對庫存項目。")
 # Initialize connection
 gs, vision_client = get_google_clients()
 
+# --- INITIALIZE DATA FROM GOOGLE SHEETS ---
 try:
+    # Open the spreadsheet
     sheet = gs.open(GOOGLE_SHEET_NAME)
     
-    # 1. CHANGE "Inventory" to "Cost"
-    inv_tab = sheet.worksheet("Cost") 
-    
+    # Connect to the specific tabs
+    inv_tab = sheet.worksheet("Cost")
     log_tab = sheet.worksheet("Invoice_Log")
     
-    # Load data
-    inv_data = inv_tab.get_all_records()
-    df_inv = pd.DataFrame(inv_data)
+    # Get all rows as a list of lists (more stable than get_all_records)
+    data = inv_tab.get_all_values()
     
-    # 2. CHECK YOUR COLUMN NAME
-    # If your first column is named "Name" (based on your previous screenshot), 
-    # change 'Item Name' to 'Name' below:
-    inventory_list = df_inv['Name'].tolist() 
+    if len(data) > 1:
+        # data[0] is your header row, data[1:] is the actual product data
+        headers = data[0]
+        rows = data[1:]
+        
+        # Create the DataFrame
+        df_inv = pd.DataFrame(rows, columns=headers)
+        
+        # Verify the 'Name' column exists in your Google Sheet
+        if 'Name' in df_inv.columns:
+            inventory_list = df_inv['Name'].tolist()
+        else:
+            st.error("❌ 找不到名為 'Name' 的欄位。請檢查 Google Sheet 'Cost' 分頁的第一列是否有 'Name' 這個標題。")
+            st.stop()
+    else:
+        st.error("⚠️ 'Cost' 分頁中目前沒有資料。請在 Google Sheet 中至少輸入一個品項（第一列為 Name，第二列為品項名稱）。")
+        st.stop()
 
+except gspread.exceptions.WorksheetNotFound:
+    st.error("❌ 找不到名為 'Cost' 的分頁，請確認 Google Sheet 中的標籤名稱正確。")
+    st.stop()
 except Exception as e:
-    st.error(f"無法讀取試算表: 請確認分頁名稱為 'Cost'，且欄位名稱正確。")
-    # This will print the exact technical error to help us debug
-    st.write(f"偵錯資訊: {e}") 
+    st.error(f"無法讀取試算表。")
+    st.write(f"偵錯資訊: {e}")
     st.stop()
 
 # --- FILE UPLOADER ---
