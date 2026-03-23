@@ -8,7 +8,6 @@ import io
 from PIL import Image
 
 # --- CONFIGURATION ---
-# Using your verified Spreadsheet ID
 SHEET_ID = "1zmzP5iTsaqJ6h6YMn3iNHAGXudfl48uYR9vBAXbzZso"
 
 # --- GOOGLE AUTHENTICATION ---
@@ -21,6 +20,7 @@ def get_google_clients():
         vision_client = vision.ImageAnnotatorClient.from_service_account_info(creds_dict)
         return gs_client, vision_client
     except Exception as e:
+        st.error(f"❌ 認證失敗: {repr(e)}")
         return None, None
 
 def extract_text(image_bytes, vision_client):
@@ -44,29 +44,24 @@ if uploaded_file:
     st.image(img, caption="發票預覽", use_container_width=True)
     
     if st.button("🔍 辨識文字並比對庫存"):
-        with st.spinner('讀取資料庫與辨識中...'):
+        with st.spinner('正在從 Google 讀取資料並辨識中...'):
             try:
-                # 1. Connect to Sheet
+                # 1. Fetch Spreadsheet Data
                 sheet = gs.open_by_key(SHEET_ID)
                 inv_tab = sheet.worksheet("Cost")
                 data = inv_tab.get_all_values()
                 
-                if len(data) <= 1:
-                    st.error("試算表 'Cost' 中沒有品項資料，請確保 A2 有資料。")
-                    st.stop()
-                
-                # 2. Clean Headers (Ignore spaces and capitalization)
+                # Setup Inventory List (Headers to lowercase for matching)
                 headers = [str(h).strip().lower() for h in data[0]]
                 df_inv = pd.DataFrame(data[1:], columns=headers)
                 
-                # 3. Check for the "Name" column
-                if 'name' in headers:
-                    inventory_list = df_inv['name'].tolist()
-                else:
-                    st.error(f"❌ 找不到 'Name' 欄位。目前偵測到的標題為: {headers}")
+                if 'name' not in headers:
+                    st.error(f"❌ 找不到 'Name' 欄位。請確認試算表 A1 為 'Name'。偵測到: {headers}")
                     st.stop()
+                
+                inventory_list = df_inv['name'].tolist()
 
-                # 4. Run Google Vision OCR
+                # 2. Run OCR (Now that API is enabled!)
                 img_byte_arr = io.BytesIO()
                 img.save(img_byte_arr, format='PNG')
                 ocr_text = extract_text(img_byte_arr.getvalue(), vision_client)
@@ -75,19 +70,17 @@ if uploaded_file:
                 
                 st.session_state['ocr_lines'] = lines
                 st.session_state['inventory_list'] = inventory_list
-                st.success("辨識完成！")
+                st.success("✅ 辨識完成！")
             except Exception as e:
-                # Shows the exact technical error to pinpoint the issue
-                st.error(f"發生錯誤: {str(e)}")
+                st.error(f"⚠️ 發生錯誤: {repr(e)}")
 
-# --- MATCHING & SELECTION UI ---
+# --- MATCHING UI ---
 if 'ocr_lines' in st.session_state:
     st.subheader("項目核對與入庫")
     inventory_list = st.session_state['inventory_list']
     
     for i, line in enumerate(st.session_state['ocr_lines']):
         with st.expander(f"原始文字: {line}", expanded=True):
-            # Fuzzy matching to suggest items from your 'Cost' tab
             matches = process.extract(line, inventory_list, scorer=fuzz.partial_token_set_ratio, limit=3)
             match_options = [m[0] for m in matches]
             
@@ -99,13 +92,13 @@ if 'ocr_lines' in st.session_state:
             
             if st.button(f"確認存入第 {i+1} 項", key=f"btn_{i}"):
                 try:
-                    # Append data to the log tab
+                    sheet = gs.open_by_key(SHEET_ID)
                     log_tab = sheet.worksheet("Invoice_Log")
                     timestamp = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
                     log_tab.append_row([timestamp, selected_item, line, str(price)])
                     st.toast(f"✅ 已存入: {selected_item}")
                 except Exception as e:
-                    st.error(f"存入失敗: {e}")
+                    st.error(f"存入失敗: {repr(e)}")
 
 st.divider()
-st.caption("提示：如需修改庫存清單，請直接前往 Google Sheet 修改 'Cost' 分頁。")
+st.caption("提示：如需修改庫存清單，請前往 Google Sheet 修改 'Cost' 分頁。")
